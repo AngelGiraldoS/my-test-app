@@ -1,27 +1,67 @@
-#container {
-  text-align: center;
-
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
+.table-container {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ddd;
+  margin: 10px;
+  border-radius: 5px;
+  overflow: hidden;
 }
 
-#container strong {
-  font-size: 20px;
-  line-height: 26px;
+.table-header {
+  display: flex;
+  font-weight: bold;
+  border-bottom: 1px solid #ddd;
 }
 
-#container p {
-  font-size: 16px;
-  line-height: 22px;
+.table-row {
+  display: flex;
+  border-bottom: 1px solid #ddd;
 
-  color: #8c8c8c;
-
-  margin: 0;
+  &:last-child {
+    border-bottom: none;
+  }
 }
 
-#container a {
-  text-decoration: none;
+.table-cell {
+  padding: 10px;
+  text-align: left;
+  flex: 1;
+
+  &.header-cell {
+    flex: 2; // Ajusta el ancho de las celdas de encabezado si es necesario
+  }
+
+  &.title-cell {
+    flex: 2; // Ajusta el ancho de la celda del título
+  }
+
+  &.description-cell {
+    flex: 3; // Ajusta el ancho de la celda de descripción
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  &.actions-cell {
+    flex: 1; // Aumenta el ancho de la celda de acciones
+    display: flex;
+    align-items: left;
+    justify-content: flex-end;
+
+    ion-buttons {
+      margin-right: auto;
+      margin-left: auto;
+
+    }
+  }
+  body {
+    background-color: #ddd;
+  }
+  ion-toolbar {
+    ion-buttons[slot="end"] {
+      margin-right: 5px; // Espacio a la derecha de los botones
+    }
+    ion-button {
+      margin-left: 5px; // Espacio entre los botones
+    }
+  }
 }

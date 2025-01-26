@@ -1,0 +1,20 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>{{ nota ? 'Editar Nota' : 'Agregar Nota' }}</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="cerrarModal()">Cerrar</ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+  <ion-item>
+    <ion-input label="Título" labelPlacement="floating" [(ngModel)]="titulo"></ion-input>
+  </ion-item>
+  <ion-item>
+    <ion-textarea label="Contenido" labelPlacement="floating" [(ngModel)]="contenido"></ion-textarea>
+  </ion-item>
+  <ion-button expand="block" (click)="guardarNota()" class="ion-margin-top">
+    {{ nota ? 'Guardar Cambios' : 'Agregar Nota' }}
+  </ion-button>
+</ion-content>

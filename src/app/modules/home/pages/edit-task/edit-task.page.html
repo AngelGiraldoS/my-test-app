@@ -1,0 +1,33 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Editar Tarea</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding">
+  <form [formGroup]="editTaskForm" (ngSubmit)="onSubmit()">
+    <ion-item>
+      <ion-label position="floating">Título</ion-label>
+      <ion-input formControlName="title" type="text"></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="floating">Descripción</ion-label>
+      <ion-input formControlName="description" type="text"></ion-input>
+    </ion-item>
+
+    <ion-item>
+        <ion-label>Categoría</ion-label>
+        <ion-select formControlName="categoryId">
+            <ion-select-option *ngFor="let category of categories$ | async" [value]="category.id">
+                {{ category.name }}
+            </ion-select-option>
+        </ion-select>
+    </ion-item>
+
+    <ion-button expand="block" type="submit" [disabled]="!editTaskForm.valid">
+      <ion-icon slot="start" name="checkmark-circle"></ion-icon>
+      Guardar
+    </ion-button>
+  </form>
+</ion-content>
