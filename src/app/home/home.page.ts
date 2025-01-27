@@ -1,4 +1,4 @@
-import { Component, inject, OnDestroy } from '@angular/core';
+import { Component, inject, OnDestroy, OnInit } from '@angular/core';
 import {
   ModalController,
   IonMenu,
@@ -12,13 +12,10 @@ import {
   IonLabel,
   IonButtons,
   IonButton,
-  IonIcon,
-  IonFab,
-  IonFabButton,
+
   IonSelect,
   IonSelectOption,
-  IonCheckbox,
-} from '@ionic/angular/standalone';
+  IonCheckbox } from '@ionic/angular/standalone';
 import { Task } from '../models/task.model';
 import {
   Firestore,
@@ -30,7 +27,7 @@ import {
   query,
   updateDoc,
 } from '@angular/fire/firestore';
-import { Observable, Subscription, combineLatest, of, from } from 'rxjs'; // Importa 'from'
+import { Observable, Subscription, combineLatest, of, from } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { AddTaskPage } from '../modules/home/pages/add-task/add-task.page'; 
 import { AuthService } from '../services/auth.service';
@@ -40,15 +37,16 @@ import { TaskService } from '../services/task.service';
 import { FormsModule } from '@angular/forms';
 import { Category } from '../models/category.model';
 import { CategoryService } from '../services/category.service';
-import { map, startWith, take, switchMap } from 'rxjs/operators'; // Importa 'take' y 'switchMap'
-
+import { map, take, switchMap } from 'rxjs/operators';
+import { RemoteConfigService } from '../services/remote-config.service';
+import { getDocs, limit, orderBy, startAfter } from 'firebase/firestore';
 
 @Component({
   selector: 'app-home',
   templateUrl: './home.page.html',
   styleUrls: ['./home.page.scss'],
   standalone: true,
-  imports: [
+  imports: [ 
     CommonModule,
     IonHeader,
     IonToolbar,
@@ -66,59 +64,95 @@ import { map, startWith, take, switchMap } from 'rxjs/operators'; // Importa 'ta
     RouterModule,
     IonSelect,
     IonSelectOption,
-    IonCheckbox
+    IonCheckbox,
+
   ],
 })
-export class HomePage implements OnDestroy {
-  private remoteConfigService = inject(RemoteConfigService);
-    private featureFlagSubscription: Subscription;
-
-    isNewFeatureEnabled: boolean = false;
-
+export class HomePage implements OnDestroy, OnInit {
   tasks$!: Observable<Task[]>;
   categories$: Observable<Category[]>;
   selectedCategoryId: string | null = null;
+  isNewFeatureEnabled: boolean = false;
+
   private taskService = inject(TaskService);
   private firestore: Firestore = inject(Firestore);
   private modalController = inject(ModalController);
   private authService = inject(AuthService);
   private router = inject(Router);
   private categoryService = inject(CategoryService);
+  private remoteConfigService = inject(RemoteConfigService);
+
   private authSubscription: Subscription;
+  private featureFlagSubscription: Subscription = new Subscription();
+
+  currentPage = 0; // Página actual
+  itemsPerPage = 5; // Cantidad de tareas por página
+  lastVisible: any; // Último documento visible en la página actual
+  isLoading = false;
+  noMoreTasks = false;
 
   constructor() {
     this.categories$ = this.categoryService.getCategories();
-
     this.authSubscription = this.authService.user$.subscribe((user) => {
       if (user) {
-        const userTasksCollection = collection(
-          this.firestore,
-          `users/${user.uid}/tasks`
-        );
-        const selectedCategory$ = of(this.selectedCategoryId);
-
-        this.tasks$ = combineLatest([
-          collectionData(query(userTasksCollection), {
-            idField: 'id',
-          }) as Observable<Task[]>,
-          selectedCategory$
-        ]).pipe(
-          map(([tasks, selectedCategoryId]) => {
-            if (selectedCategoryId) {
-              return tasks.filter(
-                (task) => task.categoryId === selectedCategoryId
-              );
-            } else {
-              return tasks;
-            }
-          })
-        );
+        this.loadTasks(user.uid);
       } else {
         this.tasks$ = of([]);
         this.router.navigate(['/login']);
       }
     });
   }
+
+  async ngOnInit() {
+    await this.remoteConfigService.initialize(); // Inicializa Remote Config
+    this.featureFlagSubscription = this.remoteConfigService
+      .isFeatureEnabled('feature_flag_new_feature', false)
+      .subscribe((isEnabled) => {
+        this.isNewFeatureEnabled = isEnabled;
+        console.log('Feature flag:', this.isNewFeatureEnabled);
+      });
+  }
+
+  private loadTasks(userId: string) {
+    if (this.isLoading || this.noMoreTasks) return;
+    this.isLoading = true;
+
+    const userTasksCollection = collection(this.firestore, `users/${userId}/tasks`);
+    let tasksQuery = query(userTasksCollection, orderBy("title"), limit(this.itemsPerPage)); // Ordena por 'title' y limita la cantidad de tareas
+
+    if (this.selectedCategoryId) {
+      tasksQuery = query(
+        tasksQuery,
+        where('categoryId', '==', this.selectedCategoryId)
+      );
+    }
+
+    if (this.lastVisible) {
+      tasksQuery = query(tasksQuery, startAfter(this.lastVisible));
+    }
+
+    getDocs(tasksQuery)
+      .then((querySnapshot) => {
+        const tasks: Task[] = [];
+        querySnapshot.forEach((doc) => {
+          // Aquí te aseguras de que el objeto task tiene el ID
+          tasks.push({ id: doc.id, ...doc.data() } as Task);
+        });
+
+        if (tasks.length < this.itemsPerPage) {
+          this.noMoreTasks = true;
+        }
+
+        this.lastVisible = querySnapshot.docs[querySnapshot.docs.length - 1];
+        this.tasks$ = of(tasks);
+      })
+      .catch((error) => {
+        console.error('Error al cargar tareas:', error);
+      })
+      .finally(() => (this.isLoading = false));
+  }
+
+
 
   async addTask() {
     const modal = await this.modalController.create({
@@ -138,54 +172,37 @@ export class HomePage implements OnDestroy {
   }
 
   async deleteTask(id: string) {
-    this.authService.user$.subscribe(async (user) => {
-      if (user) {
+    this.authService.user$
+      .pipe(take(1))
+      .subscribe(async (user) => {
+        if (!user) return;
         const taskDocRef = doc(this.firestore, `users/${user.uid}/tasks/${id}`);
         await deleteDoc(taskDocRef);
-      }
-    });
+      });
   }
 
   navigateToAddCategory() {
     this.router.navigate(['/categories']);
   }
 
-  logout() {
-    this.authService.logout().subscribe(() => {
-      this.router.navigate(['/login']);
-    });
+  async logout() {
+    try {
+        await this.authService.logout();
+        this.router.navigate(['/login']);
+      } catch (error) {
+        console.error("Error al cerrar sesión:", error);
+      }
   }
 
   onCategoryChange() {
-    this.authSubscription = this.authService.user$.subscribe((user) => {
-        if (user) {
-          const userTasksCollection = collection(
-            this.firestore,
-            `users/${user.uid}/tasks`
-          );
-          const selectedCategory$ = of(this.selectedCategoryId);
-  
-          this.tasks$ = combineLatest([
-            collectionData(query(userTasksCollection), {
-              idField: 'id',
-            }) as Observable<Task[]>,
-            selectedCategory$
-          ]).pipe(
-            map(([tasks, selectedCategoryId]) => {
-              if (selectedCategoryId) {
-                return tasks.filter(
-                  (task) => task.categoryId === selectedCategoryId
-                );
-              } else {
-                return tasks;
-              }
-            })
-          );
-        } else {
-          this.tasks$ = of([]);
-          this.router.navigate(['/login']);
-        }
-      });
+    this.currentPage = 0;
+    this.lastVisible = null;
+    this.noMoreTasks = false;
+    this.authService.user$.pipe(take(1)).subscribe((user) => {
+      if (user) {
+        this.loadTasks(user.uid);
+      }
+    });
   }
 
   async toggleTaskCompletion(task: Task) {
@@ -205,8 +222,31 @@ export class HomePage implements OnDestroy {
         }
       });
     }
-
+  nextPage() {
+    this.authService.user$.pipe(take(1)).subscribe((user) => {
+      if (user) {
+          if (!this.lastVisible) return;
+          this.currentPage++;
+          this.loadTasks(user.uid);
+      }
+    });
+  }
+  
+  previousPage() {
+    this.authService.user$.pipe(take(1)).subscribe((user) => {
+        if (user) {
+            if (this.currentPage === 0) return;
+            this.currentPage--;
+            this.noMoreTasks = false;
+            this.lastVisible = null;
+            this.loadTasks(user.uid);
+        }
+      });
+    }
   ngOnDestroy() {
-    this.authSubscription.unsubscribe();
+    if (this.authSubscription) {
+      this.authSubscription.unsubscribe();
+    }
+    this.featureFlagSubscription.unsubscribe();
   }
 }

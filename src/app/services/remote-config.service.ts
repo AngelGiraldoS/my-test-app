@@ -3,43 +3,49 @@ import {
   RemoteConfig,
   getValue,
   fetchAndActivate,
+  getBoolean,
 } from '@angular/fire/remote-config';
-import { map, Observable, of } from 'rxjs';
+import { map, Observable, of, from } from 'rxjs';
+import { environment } from 'src/environments/environment';
 
 @Injectable({
   providedIn: 'root',
 })
 export class RemoteConfigService {
-  private remoteConfig = inject(RemoteConfig);
+  private remoteConfig: RemoteConfig = inject(RemoteConfig);
+  private initialized = false;
 
   constructor() {
-    this.remoteConfig.settings.minimumFetchIntervalMillis = 3600000;
+    if (environment.useEmulators) {
+      this.remoteConfig.settings.minimumFetchIntervalMillis = 0;
+    } else {
+      this.remoteConfig.settings.minimumFetchIntervalMillis = 3600000;
+    }
     this.remoteConfig.defaultConfig = {
-      feature_flag_new_feature: false, // Valor por defecto si no se puede obtener de Remote Config
+      feature_flag_new_feature: false,
     };
   }
 
-  // Inicializar y activar la configuración remota
-  async initialize() {
+  async initialize(): Promise<boolean> {
     try {
-      await fetchAndActivate(this.remoteConfig);
+      const result = await fetchAndActivate(this.remoteConfig);
+      this.initialized = true;
+      return result;
     } catch (error) {
       console.error('Error al inicializar Remote Config:', error);
+      return false;
     }
   }
 
-  // Obtener un valor booleano específico de Remote Config
-  private getBooleanValue(key: string, defaultValue: boolean): Observable<boolean> {
-    const value = getValue(this.remoteConfig, key);
-    if (value.getSource() === 'remote') {
-      return of(value.asBoolean());
-    } else {
-      return of(defaultValue); // Usar valor predeterminado local si no hay valor remoto
-    }
-  }
-
-  // Comprobar si una característica está habilitada
-  isFeatureEnabled(featureName: string, defaultValue: boolean): Observable<boolean> {
-    return this.getBooleanValue(featureName, defaultValue);
+  isFeatureEnabled(
+    featureName: string,
+    defaultValue: boolean
+  ): Observable<boolean> {
+    return from(this.initialize()).pipe(
+      map(() => {
+        const value = getBoolean(this.remoteConfig, featureName);
+        return value !== undefined ? value : defaultValue;
+      })
+    );
   }
 }
